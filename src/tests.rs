@@ -11,6 +11,7 @@ use crate::*;
 mod alerts;
 mod attributes;
 mod autolink;
+mod backtick_cache;
 mod block_directive;
 mod callouts;
 mod cancel;

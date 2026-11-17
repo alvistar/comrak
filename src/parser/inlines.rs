@@ -2228,7 +2228,9 @@ impl<'a, 'r, 'o, 'd, 'c, 'p> Subject<'a, 'r, 'o, 'd, 'c, 'p> {
             };
             self.scanner.pos += index;
             let numticks = self.take_while(b'`');
-            if numticks <= MAXBACKTICKS {
+            // Keep the latest position per length: a rescan from an earlier opener must not
+            // move it back, or a later opener misses its closer (cmark PR #632).
+            if numticks <= MAXBACKTICKS && self.backticks[numticks] < self.scanner.pos - numticks {
                 self.backticks[numticks] = self.scanner.pos - numticks;
             }
             if numticks == openticklength {
