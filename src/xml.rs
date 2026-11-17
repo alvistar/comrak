@@ -3,7 +3,9 @@ use std::fmt::{self, Write};
 
 use crate::html::TableCellIndexer;
 use crate::node_matches;
-use crate::nodes::{CalloutFold, ListType, NodeCode, NodeMath, NodeTableRow, NodeValue};
+use crate::nodes::{
+    CalloutFold, LinkReferenceKind, ListType, NodeCode, NodeMath, NodeTableRow, NodeValue,
+};
 use crate::nodes::{Node, NodeHtmlBlock};
 use crate::parser::options::{Options, Plugins};
 
@@ -242,6 +244,28 @@ impl<'o, 'c> XmlFormatter<'o, 'c> {
                     self.escape(&nl.url)?;
                     self.output.write_str("\" title=\"")?;
                     self.escape(&nl.title)?;
+                    self.output.write_str("\"")?;
+                }
+                NodeValue::LinkReference(ref r) | NodeValue::ImageReference(ref r) => {
+                    self.output.write_str(" destination=\"")?;
+                    self.escape(&r.url)?;
+                    self.output.write_str("\" title=\"")?;
+                    self.escape(&r.title)?;
+                    self.output.write_str("\" label=\"")?;
+                    self.escape(&r.label)?;
+                    self.output.write_str(match r.kind {
+                        LinkReferenceKind::Full => "\" reference_type=\"full\"",
+                        LinkReferenceKind::Collapsed => "\" reference_type=\"collapsed\"",
+                        LinkReferenceKind::Shortcut => "\" reference_type=\"shortcut\"",
+                    })?;
+                }
+                NodeValue::LinkDefinition(ref d) => {
+                    self.output.write_str(" label=\"")?;
+                    self.escape(&d.label)?;
+                    self.output.write_str("\" destination=\"")?;
+                    self.escape(&d.url)?;
+                    self.output.write_str("\" title=\"")?;
+                    self.escape(&d.title)?;
                     self.output.write_str("\"")?;
                 }
                 NodeValue::Table(..) => {

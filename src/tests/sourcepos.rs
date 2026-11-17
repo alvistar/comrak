@@ -440,6 +440,25 @@ hello foo@example.com world
 [bar]: https://example.com"#,
 );
 
+const LINK_DEFINITION: TestCase = (
+    &[sourcepos!((3:1-3:9)), sourcepos!((4:3-5:8))],
+    "hello\n\n[foo]: /u\n  [bar]:\n  /v 't'\n",
+);
+
+const LINK_REFERENCE: TestCase = (
+    &[
+        sourcepos!((1:7-1:11)),
+        sourcepos!((1:17-1:24)),
+        sourcepos!((1:27-1:33)),
+    ],
+    "hello [foo] and [x][bar], [bar][]\n\n[foo]: /a\n[bar]: /b\n",
+);
+
+const IMAGE_REFERENCE: TestCase = (
+    &[sourcepos!((1:7-1:12))],
+    "hello ![foo] banana\n\n[foo]: /a\n",
+);
+
 const IMAGE: TestCase = (
     &[sourcepos!((1:7-1:38))],
     "hello ![alt text](https://example.com) banana",
@@ -612,6 +631,9 @@ fn node_values() -> HashMap<NodeValueDiscriminants, TestCase> {
                 Subscript => SUBSCRIPT,
                 Link => LINK,
                 Image => IMAGE,
+                LinkDefinition => LINK_DEFINITION,
+                LinkReference => LINK_REFERENCE,
+                ImageReference => IMAGE_REFERENCE,
                 Math => MATH,
                 MathBlock => MATH_BLOCK,
                 Escaped => ESCAPED,
@@ -690,6 +712,12 @@ fn sourcepos() {
         case_options.extension.ofm_block_ids = matches!(kind, NodeValueDiscriminants::BlockId);
         case_options.extension.math_dollars_block =
             matches!(kind, NodeValueDiscriminants::MathBlock);
+        case_options.parse.leave_link_references = matches!(
+            kind,
+            NodeValueDiscriminants::LinkDefinition
+                | NodeValueDiscriminants::LinkReference
+                | NodeValueDiscriminants::ImageReference
+        );
 
         let arena = Arena::new();
         let root = parse_document(&arena, text, &case_options);

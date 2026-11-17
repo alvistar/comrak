@@ -6,9 +6,10 @@ use std::str;
 use crate::Arena;
 use crate::ctype::{isalpha, isdigit, ispunct, ispunct_char, isspace, isspace_char};
 use crate::nodes::{
-    CalloutFold, ListDelimType, ListType, Node, NodeAlert, NodeBlockDirective, NodeCallout,
-    NodeCodeBlock, NodeHeading, NodeHtmlBlock, NodeLink, NodeList, NodeMath, NodeMathBlock,
-    NodeTaskItem, NodeValue, NodeWikiLink, TableAlignment,
+    CalloutFold, LinkReferenceKind, ListDelimType, ListType, Node, NodeAlert, NodeBlockDirective,
+    NodeCallout, NodeCodeBlock, NodeHeading, NodeHtmlBlock, NodeLink, NodeLinkDefinition,
+    NodeLinkReference, NodeList, NodeMath, NodeMathBlock, NodeTaskItem, NodeValue, NodeWikiLink,
+    TableAlignment,
 };
 use crate::parser::block_ids;
 use crate::parser::options::{Options, Plugins, WikiLinksMode};
@@ -517,6 +518,9 @@ impl<'a, 'o, 'c, 'w> CommonMarkFormatter<'a, 'o, 'c, 'w> {
             NodeValue::Superscript => self.format_superscript()?,
             NodeValue::Link(ref nl) => return self.format_link(node, nl, entering),
             NodeValue::Image(ref nl) => self.format_image(nl, entering)?,
+            NodeValue::LinkReference(ref r) => self.format_reference(r, false, entering)?,
+            NodeValue::ImageReference(ref r) => self.format_reference(r, true, entering)?,
+            NodeValue::LinkDefinition(ref d) => self.format_link_definition(d, entering)?,
             #[cfg(feature = "shortcodes")]
             NodeValue::ShortCode(ref ne) => self.format_shortcode(ne, entering)?,
             NodeValue::Table(..) => self.format_table(entering),
@@ -1201,6 +1205,47 @@ impl<'a, 'o, 'c, 'w> CommonMarkFormatter<'a, 'o, 'c, 'w> {
             write!(self, "]]")?;
         }
 
+        Ok(())
+    }
+
+    /// A reference link or image in the form it was written; its label is source text.
+    fn format_reference(
+        &mut self,
+        r: &NodeLinkReference,
+        image: bool,
+        entering: bool,
+    ) -> fmt::Result {
+        if entering {
+            write!(self, "{}", if image { "![" } else { "[" })?;
+        } else {
+            match r.kind {
+                LinkReferenceKind::Full => {
+                    write!(self, "][")?;
+                    self.output(&r.label, false, Escaping::Literal)?;
+                    write!(self, "]")?;
+                }
+                LinkReferenceKind::Collapsed => write!(self, "][]")?,
+                LinkReferenceKind::Shortcut => write!(self, "]")?,
+            }
+        }
+        Ok(())
+    }
+
+    fn format_link_definition(&mut self, d: &NodeLinkDefinition, entering: bool) -> fmt::Result {
+        if entering {
+            self.blankline();
+            write!(self, "[")?;
+            self.output(&d.label, false, Escaping::Literal)?;
+            write!(self, "]: ")?;
+            self.output(&d.url, false, Escaping::Url)?;
+            if !d.title.is_empty() {
+                write!(self, " \"")?;
+                self.output(&d.title, false, Escaping::Title)?;
+                write!(self, "\"")?;
+            }
+            self.cr();
+            self.blankline();
+        }
         Ok(())
     }
 

@@ -88,6 +88,17 @@ where
 
     fn reclaim(&mut self, child: Parser<'a, 'o, 'c, 'd>, fragments: &[Fragment<'_>]) {
         self.refmap = child.refmap;
+        // Kept definitions are inserted once the outer parse ends: map them to the outer
+        // document now, as `remap` does for the nodes.
+        for (anchor, mut defs) in child.pending_link_definitions {
+            for (_, sourcepos) in &mut defs {
+                *sourcepos = Sourcepos {
+                    start: remap_position(fragments, sourcepos.start),
+                    end: remap_position(fragments, sourcepos.end),
+                };
+            }
+            self.pending_link_definitions.push((anchor, defs));
+        }
         self.cell_line_ends.extend(
             child
                 .cell_line_ends
@@ -100,14 +111,16 @@ where
     }
 }
 
+fn remap_position(fragments: &[Fragment<'_>], lc: LineColumn) -> LineColumn {
+    let fragment = &fragments[lc.line - 1];
+    LineColumn {
+        line: fragment.line,
+        column: fragment.byte + lc.column,
+    }
+}
+
 fn remap(container: Node<'_>, fragments: &[Fragment<'_>]) {
-    let at = |lc: LineColumn| {
-        let fragment = &fragments[lc.line - 1];
-        LineColumn {
-            line: fragment.line,
-            column: fragment.byte + lc.column,
-        }
-    };
+    let at = |lc: LineColumn| remap_position(fragments, lc);
 
     for node in container.descendants().skip(1) {
         let mut ast = node.data_mut();

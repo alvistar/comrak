@@ -118,6 +118,11 @@ pub enum NodeValue {
     /// Contains other **blocks**.
     FootnoteDefinition(NodeFootnoteDefinition),
 
+    /// **Block**. A [link reference
+    /// definition](https://spec.commonmark.org/0.31.2/#link-reference-definitions), left in the
+    /// tree by `parse.leave_link_references`.  Has no children.
+    LinkDefinition(Box<NodeLinkDefinition>),
+
     /// **Block**. A [table](https://github.github.com/gfm/#tables-extension-) per the GFM spec.
     /// Contains table rows.
     Table(Box<NodeTable>),
@@ -201,6 +206,15 @@ pub enum NodeValue {
 
     /// **Inline**.  A footnote reference.
     FootnoteReference(Box<NodeFootnoteReference>),
+
+    /// **Inline**.  A [reference link](https://spec.commonmark.org/0.31.2/#reference-link)
+    /// (full, collapsed or shortcut), resolved, left as such by `parse.leave_link_references`.
+    /// Contains other **inlines**, like a `Link`.
+    LinkReference(Box<NodeLinkReference>),
+
+    /// **Inline**.  A reference-form image, resolved, left as such by
+    /// `parse.leave_link_references`.  Contains other **inlines**, like an `Image`.
+    ImageReference(Box<NodeLinkReference>),
 
     #[cfg(feature = "shortcodes")]
     /// **Inline**. An Emoji character generated from a shortcode. Enable with feature "shortcodes".
@@ -529,6 +543,56 @@ impl NodeCode {
             literal: literal.into(),
         }
     }
+}
+
+/// The form of a reference link or image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkReferenceKind {
+    /// `[text][label]`
+    Full,
+    /// `[label][]`
+    Collapsed,
+    /// `[label]`
+    Shortcut,
+}
+
+/// A reference link or image: the definition it resolved to, and how it was written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct NodeLinkReference {
+    /// The label as written, between its brackets and trimmed, not normalized: the second
+    /// bracket pair of a full reference, the link text of a collapsed or shortcut one.
+    pub label: String,
+
+    /// Full, collapsed or shortcut.
+    pub kind: LinkReferenceKind,
+
+    /// The URL of the definition it resolved to.
+    pub url: String,
+
+    /// The title of the definition it resolved to.
+    pub title: String,
+}
+
+impl NodeLinkReference {
+    /// The link (or image) this reference resolves to.
+    pub fn link(&self) -> NodeLink {
+        NodeLink::new(self.url.clone(), self.title.clone())
+    }
+}
+
+/// A link reference definition, `[label]: url "title"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct NodeLinkDefinition {
+    /// The label as written, between its brackets and trimmed, not normalized.
+    pub label: String,
+
+    /// The destination.
+    pub url: String,
+
+    /// The title, or empty.
+    pub title: String,
 }
 
 /// The details of a link's destination, or an image's source.
@@ -1187,6 +1251,7 @@ impl NodeValue {
             NodeValue::Document
             | NodeValue::BlockQuote
             | NodeValue::FootnoteDefinition(_)
+            | NodeValue::LinkDefinition(_)
             | NodeValue::List(..)
             | NodeValue::DescriptionList
             | NodeValue::DescriptionItem(_)
@@ -1259,6 +1324,7 @@ impl NodeValue {
             NodeValue::Document => "document",
             NodeValue::BlockQuote => "block_quote",
             NodeValue::FootnoteDefinition(_) => "footnote_definition",
+            NodeValue::LinkDefinition(_) => "link_definition",
             NodeValue::List(..) => "list",
             NodeValue::DescriptionList => "description_list",
             NodeValue::DescriptionItem(_) => "description_item",
@@ -1301,6 +1367,8 @@ impl NodeValue {
             NodeValue::TaskItem { .. } => "taskitem",
             NodeValue::Superscript => "superscript",
             NodeValue::FootnoteReference(..) => "footnote_reference",
+            NodeValue::LinkReference(..) => "link_reference",
+            NodeValue::ImageReference(..) => "image_reference",
             #[cfg(feature = "shortcodes")]
             NodeValue::ShortCode(_) => "shortcode",
             NodeValue::MultilineBlockQuote(_) => "multiline_block_quote",
@@ -1627,6 +1695,8 @@ impl<'a> arena_tree::Node<'a, RefCell<Ast>> {
             | NodeValue::Strong(..)
             | NodeValue::Link(..)
             | NodeValue::Image(..)
+            | NodeValue::LinkReference(..)
+            | NodeValue::ImageReference(..)
             | NodeValue::WikiLink(..)
             | NodeValue::Strikethrough(..)
             | NodeValue::Highlight
@@ -1662,6 +1732,8 @@ impl<'a> arena_tree::Node<'a, RefCell<Ast>> {
                     | NodeValue::Strong(..)
                     | NodeValue::Link(..)
                     | NodeValue::Image(..)
+                    | NodeValue::LinkReference(..)
+                    | NodeValue::ImageReference(..)
                     | NodeValue::Strikethrough(..)
                     | NodeValue::Highlight
                     | NodeValue::Insert
@@ -1715,6 +1787,7 @@ impl<'a> arena_tree::Node<'a, RefCell<Ast>> {
             | NodeValue::HtmlInline(_)
             | NodeValue::Raw(_)
             | NodeValue::FootnoteReference(_)
+            | NodeValue::LinkDefinition(_)
             | NodeValue::Math(_)
             | NodeValue::MathBlock(_)
             | NodeValue::BlockId(_) => false,

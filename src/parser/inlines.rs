@@ -16,9 +16,9 @@ use crate::ctype::{isdigit, ispunct, isspace};
 use crate::entity;
 use crate::matchers::{backslash_matcher, backtick_matcher, dollar_matcher};
 use crate::nodes::{
-    Ast, LineColumn, Node, NodeCode, NodeComment, NodeEmph, NodeFootnoteDefinition,
-    NodeFootnoteReference, NodeLink, NodeMath, NodeStrikethrough, NodeStrong, NodeValue,
-    NodeWikiLink, Sourcepos,
+    Ast, LineColumn, LinkReferenceKind, Node, NodeCode, NodeComment, NodeEmph,
+    NodeFootnoteDefinition, NodeFootnoteReference, NodeLink, NodeLinkReference, NodeMath,
+    NodeStrikethrough, NodeStrong, NodeValue, NodeWikiLink, Sourcepos,
 };
 #[cfg(feature = "attributes")]
 use crate::parser::attributes;
@@ -1908,6 +1908,7 @@ impl<'a, 'r, 'o, 'd, 'c, 'p> Subject<'a, 'r, 'o, 'd, 'c, 'p> {
                         is_image,
                         url.into(),
                         title.into(),
+                        None,
                         after_link_text_pos,
                         parent_line_offsets,
                     );
@@ -1929,6 +1930,14 @@ impl<'a, 'r, 'o, 'd, 'c, 'p> Subject<'a, 'r, 'o, 'd, 'c, 'p> {
         if !found_label {
             self.scanner.pos = initial_pos;
         }
+
+        let kind = if !found_label {
+            LinkReferenceKind::Shortcut
+        } else if lab.is_empty() {
+            LinkReferenceKind::Collapsed
+        } else {
+            LinkReferenceKind::Full
+        };
 
         if (!found_label || lab.is_empty()) && !last.bracket_after {
             lab = self.input[last.position..initial_pos - 1].into();
@@ -1961,10 +1970,16 @@ impl<'a, 'r, 'o, 'd, 'c, 'p> Subject<'a, 'r, 'o, 'd, 'c, 'p> {
             // When reff is Cow::Owned (from callback), into_owned() is a no-op
             // When reff is Cow::Borrowed (from refmap), into_owned() clones
             let reff = reff.into_owned();
+            let reference = self
+                .options
+                .parse
+                .leave_link_references
+                .then(|| (strings::trim_slice(&lab).to_string(), kind));
             self.close_bracket_match(
                 is_image,
                 reff.url,
                 reff.title,
+                reference,
                 after_link_text_pos,
                 parent_line_offsets,
             );
@@ -2087,24 +2102,44 @@ impl<'a, 'r, 'o, 'd, 'c, 'p> Subject<'a, 'r, 'o, 'd, 'c, 'p> {
         ))
     }
 
+    /// `reference`: the label as written and the form, when the link is to stay a reference node.
     fn close_bracket_match(
         &mut self,
         is_image: bool,
         url: String,
         title: String,
+        reference: Option<(String, LinkReferenceKind)>,
         after_link_text_pos: usize,
         parent_line_offsets: &[usize],
     ) {
         let last = self.brackets.pop().unwrap();
 
-        let nl = NodeLink { url, title };
+        let value = match reference {
+            Some((label, kind)) => {
+                let r = Box::new(NodeLinkReference {
+                    label,
+                    kind,
+                    url,
+                    title,
+                });
+                if is_image {
+                    NodeValue::ImageReference(r)
+                } else {
+                    NodeValue::LinkReference(r)
+                }
+            }
+            None => {
+                let nl = Box::new(NodeLink { url, title });
+                if is_image {
+                    NodeValue::Image(nl)
+                } else {
+                    NodeValue::Link(nl)
+                }
+            }
+        };
         let inl = make_inline(
             self.arena,
-            if is_image {
-                NodeValue::Image(Box::new(nl))
-            } else {
-                NodeValue::Link(Box::new(nl))
-            },
+            value,
             (
                 last.inl_text.data().sourcepos.start,
                 (

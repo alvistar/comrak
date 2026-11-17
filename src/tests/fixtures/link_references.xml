@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE document SYSTEM "CommonMark.dtd">
+<document sourcepos="1:1-38:13" xmlns="http://commonmark.org/xml/1.0">
+  <heading sourcepos="1:1-1:17" level="1">
+    <text sourcepos="1:3-1:17" xml:space="preserve">Link references</text>
+  </heading>
+  <paragraph sourcepos="3:1-8:38">
+    <text sourcepos="3:1-3:7" xml:space="preserve">A full </text>
+    <link sourcepos="3:8-3:27" destination="/url" title="Title">
+      <text sourcepos="3:9-3:17" xml:space="preserve">reference</text>
+    </link>
+    <text sourcepos="3:28-3:41" xml:space="preserve">, a collapsed </text>
+    <link sourcepos="3:42-3:52" destination="/url" title="Title">
+      <text sourcepos="3:43-3:49" xml:space="preserve">foo bar</text>
+    </link>
+    <text sourcepos="3:53-3:68" xml:space="preserve"> and a shortcut </text>
+    <link sourcepos="3:69-3:77" destination="/url" title="Title">
+      <text sourcepos="3:70-3:76" xml:space="preserve">Foo bar</text>
+    </link>
+    <text sourcepos="3:78-3:78" xml:space="preserve">.</text>
+    <softbreak sourcepos="3:79-3:79" />
+    <text sourcepos="4:1-4:9" xml:space="preserve">An image </text>
+    <image sourcepos="4:10-4:21" destination="/img.png" title="Image title">
+      <text sourcepos="4:12-4:15" xml:space="preserve">full</text>
+    </image>
+    <text sourcepos="4:22-4:23" xml:space="preserve">, </text>
+    <image sourcepos="4:24-4:31" destination="/img.png" title="Image title">
+      <text sourcepos="4:26-4:28" xml:space="preserve">img</text>
+    </image>
+    <text sourcepos="4:32-4:36" xml:space="preserve"> and </text>
+    <image sourcepos="4:37-4:42" destination="/img.png" title="Image title">
+      <text sourcepos="4:39-4:41" xml:space="preserve">img</text>
+    </image>
+    <text sourcepos="4:43-4:77" xml:space="preserve">; an [unresolved][nope] and [nope].</text>
+    <softbreak sourcepos="4:78-4:78" />
+    <text sourcepos="5:1-5:7" xml:space="preserve">Nested </text>
+    <link sourcepos="5:8-5:35" destination="/url" title="Title">
+      <emph sourcepos="5:9-5:18">
+        <text sourcepos="5:10-5:17" xml:space="preserve">emphasis</text>
+      </emph>
+      <text sourcepos="5:19-5:19" xml:space="preserve"> </text>
+      <code sourcepos="5:20-5:25" xml:space="preserve">code</code>
+    </link>
+    <text sourcepos="5:36-5:40" xml:space="preserve"> and </text>
+    <image sourcepos="5:41-5:55" destination="/img.png" title="Image title">
+      <text sourcepos="5:43-5:46" xml:space="preserve">alt </text>
+      <emph sourcepos="5:47-5:49">
+        <text sourcepos="5:48-5:48" xml:space="preserve">x</text>
+      </emph>
+    </image>
+    <text sourcepos="5:56-5:56" xml:space="preserve">.</text>
+    <softbreak sourcepos="5:57-5:57" />
+    <text sourcepos="6:1-6:2" xml:space="preserve">A </text>
+    <link sourcepos="6:3-6:30" destination="/url" title="Title">
+      <text sourcepos="6:4-6:20" xml:space="preserve">link [inner] text</text>
+    </link>
+    <text sourcepos="6:31-6:45" xml:space="preserve"> and [shortcut </text>
+    <link sourcepos="6:46-6:54" destination="/url" title="Title">
+      <text sourcepos="6:47-6:53" xml:space="preserve">foo bar</text>
+    </link>
+    <text sourcepos="6:55-6:56" xml:space="preserve">].</text>
+    <softbreak sourcepos="6:57-6:57" />
+    <text sourcepos="7:1-7:7" xml:space="preserve">Inline </text>
+    <link sourcepos="7:8-7:23" destination="/inline" title="t">
+      <text sourcepos="7:9-7:9" xml:space="preserve">x</text>
+    </link>
+    <text sourcepos="7:24-7:38" xml:space="preserve"> stays a link; </text>
+    <link sourcepos="7:39-7:50" destination="/url" title="Title">
+      <text sourcepos="7:40-7:40" xml:space="preserve">x</text>
+    </link>
+    <text sourcepos="7:51-7:63" xml:space="preserve">(/after) too.</text>
+    <softbreak sourcepos="7:64-7:64" />
+    <text sourcepos="8:1-8:10" xml:space="preserve">A footnote</text>
+    <footnote_reference sourcepos="8:11-8:14" label="1" />
+    <text sourcepos="8:15-8:38" xml:space="preserve"> and a [^nope] shortcut.</text>
+  </paragraph>
+  <paragraph sourcepos="18:1-18:17">
+    <text sourcepos="18:1-18:17" xml:space="preserve">Text right after.</text>
+  </paragraph>
+  <block_quote sourcepos="20:1-21:23">
+    <paragraph sourcepos="21:3-21:23">
+      <text sourcepos="21:3-21:4" xml:space="preserve">A </text>
+      <link sourcepos="21:5-21:12" destination="/q" title="">
+        <text sourcepos="21:6-21:11" xml:space="preserve">quoted</text>
+      </link>
+      <text sourcepos="21:13-21:23" xml:space="preserve"> reference.</text>
+    </paragraph>
+  </block_quote>
+  <list sourcepos="23:1-24:19" type="bullet" tight="true">
+    <item sourcepos="23:1-23:12" />
+    <item sourcepos="24:1-24:19">
+      <paragraph sourcepos="24:3-24:19">
+        <link sourcepos="24:3-24:8" destination="/i" title="">
+          <text sourcepos="24:4-24:7" xml:space="preserve">item</text>
+        </link>
+        <text sourcepos="24:9-24:19" xml:space="preserve"> in a list.</text>
+      </paragraph>
+    </item>
+  </list>
+  <heading sourcepos="27:1-28:3" level="1">
+    <text sourcepos="27:1-27:8" xml:space="preserve">Heading </text>
+    <link sourcepos="27:9-27:16" destination="/s" title="">
+      <text sourcepos="27:10-27:15" xml:space="preserve">setext</text>
+    </link>
+  </heading>
+  <table sourcepos="30:1-32:21">
+    <table_header sourcepos="30:1-30:9">
+      <table_cell sourcepos="30:2-30:4">
+        <text sourcepos="30:3-30:3" xml:space="preserve">a</text>
+      </table_cell>
+      <table_cell sourcepos="30:6-30:8">
+        <text sourcepos="30:7-30:7" xml:space="preserve">b</text>
+      </table_cell>
+    </table_header>
+    <table_row sourcepos="32:1-32:21">
+      <table_cell sourcepos="32:2-32:12">
+        <link sourcepos="32:3-32:11" destination="/url" title="Title">
+          <text sourcepos="32:4-32:10" xml:space="preserve">foo bar</text>
+        </link>
+      </table_cell>
+      <table_cell sourcepos="32:14-32:20">
+        <link sourcepos="32:15-32:19" destination="/img.png" title="Image title">
+          <text sourcepos="32:16-32:18" xml:space="preserve">img</text>
+        </link>
+      </table_cell>
+    </table_row>
+  </table>
+  <paragraph sourcepos="35:1-35:48">
+    <link sourcepos="35:1-35:18" destination="/e" title="">
+      <text sourcepos="35:2-35:17" xml:space="preserve">escaped ] label</text>
+    </link>
+    <text sourcepos="35:19-35:23" xml:space="preserve"> and </text>
+    <link sourcepos="35:24-35:29" destination="/umlaut" title="">
+      <text sourcepos="35:25-35:28" xml:space="preserve">ÄÖ</text>
+    </link>
+    <text sourcepos="35:30-35:31" xml:space="preserve">; </text>
+    <link sourcepos="35:32-35:37" destination="/umlaut" title="">
+      <text sourcepos="35:33-35:36" xml:space="preserve">äö</text>
+    </link>
+    <text sourcepos="35:38-35:42" xml:space="preserve"> and </text>
+    <link sourcepos="35:43-35:47" destination="/eszett" title="">
+      <text sourcepos="35:44-35:46" xml:space="preserve">ẞ</text>
+    </link>
+    <text sourcepos="35:48-35:48" xml:space="preserve">.</text>
+  </paragraph>
+  <footnote_definition sourcepos="16:1-16:15" label="1">
+    <paragraph sourcepos="16:7-16:15">
+      <text sourcepos="16:7-16:15" xml:space="preserve">The note.</text>
+    </paragraph>
+  </footnote_definition>
+</document>

@@ -37,6 +37,7 @@ mod highlight;
 mod html_;
 mod inline_footnotes;
 mod insert;
+mod link_references;
 mod math;
 mod multiline_block_quotes;
 mod ofm_block_ids;

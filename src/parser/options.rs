@@ -1041,6 +1041,41 @@ pub struct Parse<'c> {
     #[cfg_attr(feature = "bon", builder(default))]
     pub leave_footnote_definitions: bool,
 
+    /// Leave link reference definitions in the tree as `LinkDefinition` nodes, where they were
+    /// written, and keep reference links and images (full, collapsed and shortcut) as
+    /// `LinkReference` and `ImageReference` nodes with their label and form, instead of
+    /// resolving them into `Link` and `Image`. A reference to a label with no definition is
+    /// text either way. HTML output is the same with the option on or off.
+    ///
+    /// ```rust
+    /// # use comrak::{Arena, parse_document, Node, Options};
+    /// let mut options = Options::default();
+    /// let arena = Arena::new();
+    /// let input = "[x]: /url\n\nA [link][x], [x][] and [x].\n";
+    ///
+    /// fn node_kinds<'a>(doc: Node<'a>) -> Vec<&'static str> {
+    ///   doc.descendants().map(|n| n.data().value.xml_node_name()).collect()
+    /// }
+    ///
+    /// let root = parse_document(&arena, input, &options);
+    /// assert_eq!(
+    ///   node_kinds(root),
+    ///   &["document", "paragraph", "text", "link", "text", "text", "link", "text", "text",
+    ///     "link", "text", "text"],
+    /// );
+    ///
+    /// options.parse.leave_link_references = true;
+    ///
+    /// let root = parse_document(&arena, input, &options);
+    /// assert_eq!(
+    ///   node_kinds(root),
+    ///   &["document", "link_definition", "paragraph", "text", "link_reference", "text", "text",
+    ///     "link_reference", "text", "text", "link_reference", "text", "text"],
+    /// );
+    /// ```
+    #[cfg_attr(feature = "bon", builder(default))]
+    pub leave_link_references: bool,
+
     /// Leave escaped characters in an `Escaped` node in the document tree.
     ///
     /// ```rust

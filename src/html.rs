@@ -376,9 +376,12 @@ pub fn format_node_default<T>(
         #[cfg(feature = "phoenix_heex")]
         NodeValue::HeexInline(ref literal) => render_heex_inline(context, entering, literal),
         NodeValue::Image(ref nl) => render_image(context, node, entering, nl),
+        NodeValue::ImageReference(ref r) => render_image(context, node, entering, &r.link()),
+        NodeValue::LinkDefinition(_) => Ok(ChildRendering::HTML),
         NodeValue::Item(_) => render_item(context, node, entering),
         NodeValue::LineBreak => render_line_break(context, node, entering),
         NodeValue::Link(ref nl) => render_link(context, node, entering, nl),
+        NodeValue::LinkReference(ref r) => render_link(context, node, entering, &r.link()),
         NodeValue::List(ref nl) => render_list(context, node, entering, nl),
         NodeValue::Paragraph => render_paragraph(context, node, entering),
         NodeValue::SoftBreak => render_soft_break(context, node, entering),
@@ -600,9 +603,15 @@ fn is_labelled_container(node: Node<'_>) -> bool {
     )
 }
 
+/// A `LinkDefinition` (`parse.leave_link_references`) renders nothing: the sibling checks below
+/// skip it, so the HTML is what it is without the option.
+fn is_link_definition(node: Node<'_>) -> bool {
+    node_matches!(node, NodeValue::LinkDefinition(_))
+}
+
 fn trailing_marker(node: Node<'_>) -> Option<String> {
     let mut current = node;
-    while let Some(last) = current.last_child() {
+    while let Some(last) = current.reverse_children().find(|n| !is_link_definition(n)) {
         match last.data().value {
             NodeValue::BlockId(ref n) => return Some(n.name.clone()),
             NodeValue::List(_) | NodeValue::Item(_) | NodeValue::TaskItem(_) => return None,
@@ -1033,7 +1042,11 @@ fn render_link<T>(
     let parent_node = node.parent();
 
     if !context.options.parse.relaxed_autolinks
-        || (parent_node.is_none() || !node_matches!(parent_node.unwrap(), NodeValue::Link(..)))
+        || (parent_node.is_none()
+            || !node_matches!(
+                parent_node.unwrap(),
+                NodeValue::Link(..) | NodeValue::LinkReference(..)
+            ))
     {
         if entering {
             context.write_str("<a")?;
@@ -1143,7 +1156,10 @@ fn render_paragraph<T>(
         } else {
             if let Some(parent) = node.parent()
                 && let NodeValue::FootnoteDefinition(ref nfd) = parent.data().value
-                && node.next_sibling().is_none()
+                && node
+                    .following_siblings()
+                    .skip(1)
+                    .all(|n| is_link_definition(n))
             {
                 context.write_str(" ")?;
                 put_footnote_backref(context, nfd)?;
@@ -1155,7 +1171,10 @@ fn render_paragraph<T>(
         && node
             .preceding_siblings()
             .skip(1)
-            .find(|previous| !node_matches!(previous, NodeValue::MultilineComment(..)))
+            .find(|previous| {
+                !node_matches!(previous, NodeValue::MultilineComment(..))
+                    && !is_link_definition(previous)
+            })
             .is_some_and(|previous| node_matches!(previous, NodeValue::Paragraph))
     {
         context.write_str("\n")?;
@@ -1168,8 +1187,11 @@ fn render_paragraph<T>(
 fn is_sole_grid_table_cell_child(node: Node<'_>) -> bool {
     node.parent()
         .is_some_and(|n| node_matches!(n, NodeValue::GridTableCell(..)))
-        && node.previous_sibling().is_none()
-        && node.next_sibling().is_none()
+        && node
+            .parent()
+            .into_iter()
+            .flat_map(|p| p.children())
+            .all(|n| n.same_node(node) || is_link_definition(n))
 }
 
 #[cfg(not(feature = "grid_table"))]

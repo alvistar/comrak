@@ -31,10 +31,10 @@ use crate::entity;
 use crate::matchers::cr_or_lf_matcher;
 use crate::node_matches;
 use crate::nodes::{
-    self, AlertType, Ast, BlockLines, ListDelimType, ListType, Node, NodeAlert, NodeBlockDirective,
-    NodeCallout, NodeCodeBlock, NodeCommentBlock, NodeDescriptionItem, NodeFootnoteDefinition,
-    NodeHeading, NodeHtmlBlock, NodeList, NodeMathBlock, NodeMultilineBlockQuote, NodeTaskItem,
-    NodeThematicBreak, NodeValue, Sourcepos,
+    self, AlertType, Ast, BlockLines, LineColumn, ListDelimType, ListType, Node, NodeAlert,
+    NodeBlockDirective, NodeCallout, NodeCodeBlock, NodeCommentBlock, NodeDescriptionItem,
+    NodeFootnoteDefinition, NodeHeading, NodeHtmlBlock, NodeLinkDefinition, NodeList,
+    NodeMathBlock, NodeMultilineBlockQuote, NodeTaskItem, NodeThematicBreak, NodeValue, Sourcepos,
 };
 use crate::parser::inlines::RefMap;
 pub use crate::parser::options::Options;
@@ -285,6 +285,9 @@ pub struct Parser<'a: 'd, 'o, 'c, 'd> {
     last_line_length: usize,
     last_content_line_end: nodes::LineColumn,
     pending_callout_titles: Vec<Node<'a>>,
+    /// Definitions kept by `parse.leave_link_references`, inserted once blocks are parsed so
+    /// that the block parser never sees them.
+    pending_link_definitions: Vec<(DefinitionAnchor<'a>, Vec<(NodeLinkDefinition, Sourcepos)>)>,
     #[cfg(feature = "phoenix_heex")]
     heex_block_depth: usize,
     #[cfg(feature = "grid_table")]
@@ -364,6 +367,7 @@ where
             last_line_length: 0,
             last_content_line_end: nodes::LineColumn::default(),
             pending_callout_titles: Vec::new(),
+            pending_link_definitions: Vec::new(),
             #[cfg(feature = "phoenix_heex")]
             heex_block_depth: 0,
             #[cfg(feature = "grid_table")]
@@ -1693,7 +1697,7 @@ where
 
         let has_content = {
             let mut ast = container.data_mut();
-            self.resolve_reference_link_definitions(&mut ast)
+            self.resolve_reference_link_definitions(container, &mut ast)
         };
         if has_content {
             container.data_mut().value = NodeValue::Heading(NodeHeading {
@@ -2451,6 +2455,7 @@ where
 
     fn finalize_document(&mut self) -> Result<(), ParseCancelled> {
         self.finalize_blocks()?;
+        self.insert_link_definitions();
 
         self.process_inlines();
         self.cancellation.check()?;
@@ -2472,6 +2477,36 @@ where
         Ok(())
     }
 
+    /// Puts the definitions `parse.leave_link_references` kept where they were written.
+    fn insert_link_definitions(&mut self) {
+        let is_def = |n: Node<'a>| node_matches!(n, NodeValue::LinkDefinition(_));
+        for (anchor, defs) in mem::take(&mut self.pending_link_definitions) {
+            for (def, sourcepos) in defs {
+                let mut ast =
+                    Ast::new_with_sourcepos(NodeValue::LinkDefinition(Box::new(def)), sourcepos);
+                ast.open = false;
+                let def_node = self.arena.alloc(ast.into());
+                match anchor {
+                    DefinitionAnchor::Before(node) => node.insert_before(def_node),
+                    DefinitionAnchor::After(Some(parent), mut prev) => {
+                        // Past the definitions already placed here, in document order.
+                        while let Some(next) =
+                            prev.map_or(parent.first_child(), |p| p.next_sibling())
+                            && is_def(next)
+                        {
+                            prev = Some(next);
+                        }
+                        match prev {
+                            Some(p) => p.insert_after(def_node),
+                            None => parent.prepend(def_node),
+                        }
+                    }
+                    DefinitionAnchor::After(None, _) => {}
+                }
+            }
+        }
+    }
+
     fn finalize_blocks(&mut self) -> Result<(), ParseCancelled> {
         while !self.current.same_node(self.root) {
             if self.cancellation.step() {
@@ -2488,22 +2523,30 @@ where
         self.finalize_borrowed(node, &mut node.data_mut())
     }
 
-    fn resolve_reference_link_definitions(&mut self, ast: &mut Ast) -> bool {
+    /// Records the link reference definitions at the start of a paragraph and removes them from
+    /// it; returns whether any content is left. With `parse.leave_link_references`, the
+    /// definitions are also kept, to become `LinkDefinition` nodes once blocks are parsed.
+    fn resolve_reference_link_definitions(&mut self, node: Node<'a>, ast: &mut Ast) -> bool {
         let start_line = ast.sourcepos.start.line;
+        let leave = self.options.parse.leave_link_references;
         let lines = ast.lines_mut();
         let content = &mut lines.content;
         let mut pos = 0;
         let mut indent = 0;
         let mut rrs = vec![];
+        let mut written = vec![];
 
         let bytes = content.as_bytes();
         while pos < content.len() && bytes[pos] == b'[' {
             if self.cancellation.step() {
                 break;
             }
-            if let Some((offset, rr)) = self.parse_reference_inline(&content[pos..]) {
-                pos += offset;
-                rrs.extend(rr);
+            if let Some(parsed) = self.parse_reference_inline(&content[pos..]) {
+                if leave {
+                    written.push((parsed.written, pos, pos + parsed.text_end));
+                }
+                pos += parsed.consumed;
+                rrs.extend(parsed.reference);
                 indent = bytes[pos..]
                     .iter()
                     .take_while(|&&b| b == b' ' || b == b'\t')
@@ -2516,6 +2559,30 @@ where
 
         for (lab, rr) in rrs {
             self.refmap.insert(lab, rr);
+        }
+
+        if !written.is_empty() {
+            // A byte of `content` to its line and 1-based column: line `i` of the content starts
+            // at byte column `offsets[i]` of its source line.
+            let at = |p: usize| -> LineColumn {
+                let before = &content[..p];
+                let line = before.bytes().filter(|&b| b == b'\n').count();
+                let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+                let offset = lines.offsets.get(line).copied().unwrap_or(0);
+                (start_line + line, offset + p - line_start + 1).into()
+            };
+            let defs = written
+                .into_iter()
+                .map(|(def, start, end)| (def, (at(start), at(end - 1)).into()))
+                .collect();
+            // Before the paragraph while it keeps content; else where it is now, since an empty
+            // paragraph is detached.
+            let anchor = if strings::is_blank(&content[pos..]) {
+                DefinitionAnchor::After(node.parent(), node.previous_sibling())
+            } else {
+                DefinitionAnchor::Before(node)
+            };
+            self.pending_link_definitions.push((anchor, defs));
         }
 
         if pos == 0 {
@@ -2575,7 +2642,7 @@ where
 
         match ast.value {
             NodeValue::Paragraph => {
-                let has_content = self.resolve_reference_link_definitions(ast);
+                let has_content = self.resolve_reference_link_definitions(node, ast);
                 if has_content {
                     let content = &mut ast.lines_mut().content;
                     *content = self.take_content(content);
@@ -2963,7 +3030,11 @@ where
                         emptied = text.is_empty();
                         ast.sourcepos = sourcepos;
                     }
-                    NodeValue::Link(..) | NodeValue::Image(..) | NodeValue::WikiLink(..) => {
+                    NodeValue::Link(..)
+                    | NodeValue::Image(..)
+                    | NodeValue::LinkReference(..)
+                    | NodeValue::ImageReference(..)
+                    | NodeValue::WikiLink(..) => {
                         // Recurse into links, images, and wikilinks to join adjacent text nodes,
                         // but mark the context so autolinks won't be generated within them.
                         child_in_bracket_context = true;
@@ -3235,10 +3306,8 @@ where
         }
     }
 
-    fn parse_reference_inline(
-        &self,
-        content: &str,
-    ) -> Option<(usize, Option<(String, ResolvedReference)>)> {
+    /// Parses one link reference definition at the start of `content`.
+    fn parse_reference_inline(&self, content: &str) -> Option<ParsedDefinition> {
         let mut scanner = inlines::Scanner::new();
 
         let mut lab: String = match scanner.link_label(content) {
@@ -3277,10 +3346,14 @@ where
             }
         };
 
+        let mut text_end = scanner.pos;
+        let mut title = title;
         scanner.skip_spaces(content);
         if !scanner.skip_line_end(content) {
             if !title.is_empty() {
                 scanner.pos = beforetitle;
+                text_end = beforetitle;
+                title = "";
                 scanner.skip_spaces(content);
                 if !scanner.skip_line_end(content) {
                     return None;
@@ -3290,19 +3363,45 @@ where
             }
         }
 
+        let url: String = strings::clean_url(&url).into();
+        let title: String = strings::clean_title(title).into();
+        let written = NodeLinkDefinition {
+            label: lab.clone(),
+            url: url.clone(),
+            title: title.clone(),
+        };
         lab = strings::normalize_label(&lab, Case::Fold);
         let mut rr = None;
         if !lab.is_empty() && !self.refmap.contains(&lab) {
-            rr = Some((
-                lab,
-                ResolvedReference {
-                    url: strings::clean_url(&url).into(),
-                    title: strings::clean_title(title).into(),
-                },
-            ));
+            rr = Some((lab, ResolvedReference { url, title }));
         }
-        Some((scanner.pos, rr))
+        Some(ParsedDefinition {
+            consumed: scanner.pos,
+            reference: rr,
+            written,
+            text_end,
+        })
     }
+}
+
+/// Where the definitions of one paragraph go: before the paragraph, or, when it had nothing
+/// else and was detached, after the sibling before it (first in the parent when none).
+#[derive(Clone, Copy)]
+enum DefinitionAnchor<'a> {
+    Before(Node<'a>),
+    After(Option<Node<'a>>, Option<Node<'a>>),
+}
+
+/// One link reference definition parsed from the start of a paragraph's content.
+struct ParsedDefinition {
+    /// The bytes it takes, its line end included.
+    consumed: usize,
+    /// The reference to record, `None` for a label already defined.
+    reference: Option<(String, ResolvedReference)>,
+    /// The definition as written.
+    written: NodeLinkDefinition,
+    /// The end of its text: before trailing spaces and the line end.
+    text_end: usize,
 }
 
 enum AddTextResult {
