@@ -366,3 +366,49 @@ fn definitions_in_grid_table_cells() {
     off.extension.grid_table = true;
     assert_eq!(markdown_to_html(md, &o), markdown_to_html(md, &off));
 }
+
+/// A title followed by more text on its line is retried without the title, and upstream keeps
+/// the title it parsed in the resolved reference (commonmark.js drops it). Both settings keep
+/// upstream's output; the expected HTML is what the build before this option gives.
+#[test]
+fn title_kept_on_the_retry_path_as_upstream() {
+    let md = "[a]: /u\n\"t\" x\n\n[a]\n";
+    let expected = "<p>&quot;t&quot; x</p>\n<p><a href=\"/u\" title=\"t\">a</a></p>\n";
+    assert_eq!(markdown_to_html(md, &options(false)), expected);
+    assert_eq!(markdown_to_html(md, &options(true)), expected);
+}
+
+/// A definition whose text ends in a multibyte character: its sourcepos ends on the last byte.
+#[test]
+fn definition_ending_in_a_multibyte_character() {
+    assert_eq!(
+        dump("[a]: /é\n\n[ΑΓΩ]: /φου\n\n[a]\n"),
+        concat!(
+            "document (1:1-5:3)\n",
+            "  link_definition (1:1-1:8) [a] \"/é\" \"\"\n",
+            "  link_definition (3:1-3:17) [ΑΓΩ] \"/φου\" \"\"\n",
+            "  paragraph (5:1-5:3)\n",
+            "    link_reference (5:1-5:3) shortcut [a] \"/é\" \"\"\n",
+            "      text (5:2-5:2) \"a\"\n",
+        )
+    );
+}
+
+/// Many definitions, in one paragraph or one per paragraph, parse in time linear in their
+/// number (the same budget comrak's pathological tests give).
+#[test]
+#[ntest::timeout(4000)]
+fn many_definitions_parse_in_linear_time() {
+    let n = 50_000;
+    let one: String = (0..n).map(|i| format!("[l{i}]: /u{i}\n")).collect();
+    let separate: String = (0..n).map(|i| format!("[l{i}]: /u{i}\n\n")).collect();
+    for md in [one, separate] {
+        let arena = Arena::new();
+        let root = parse_document(&arena, &md, &options(true));
+        let defs = root
+            .children()
+            .filter(|c| node_matches!(c, NodeValue::LinkDefinition(_)))
+            .count();
+        assert_eq!(defs, n);
+    }
+}

@@ -1156,10 +1156,7 @@ fn render_paragraph<T>(
         } else {
             if let Some(parent) = node.parent()
                 && let NodeValue::FootnoteDefinition(ref nfd) = parent.data().value
-                && node
-                    .following_siblings()
-                    .skip(1)
-                    .all(|n| is_link_definition(n))
+                && node.following_siblings().skip(1).all(is_link_definition)
             {
                 context.write_str(" ")?;
                 put_footnote_backref(context, nfd)?;

@@ -2479,7 +2479,10 @@ where
 
     /// Puts the definitions `parse.leave_link_references` kept where they were written.
     fn insert_link_definitions(&mut self) {
-        let is_def = |n: Node<'a>| node_matches!(n, NodeValue::LinkDefinition(_));
+        // The last definition placed after each (parent, sibling) anchor: the next one at that
+        // anchor goes after it, in document order.
+        let mut last_at: HashMap<(usize, usize), Node<'a>> = HashMap::new();
+        let addr = |n: Option<Node<'a>>| n.map_or(0, |n| std::ptr::from_ref(n) as usize);
         for (anchor, defs) in mem::take(&mut self.pending_link_definitions) {
             for (def, sourcepos) in defs {
                 let mut ast =
@@ -2488,18 +2491,13 @@ where
                 let def_node = self.arena.alloc(ast.into());
                 match anchor {
                     DefinitionAnchor::Before(node) => node.insert_before(def_node),
-                    DefinitionAnchor::After(Some(parent), mut prev) => {
-                        // Past the definitions already placed here, in document order.
-                        while let Some(next) =
-                            prev.map_or(parent.first_child(), |p| p.next_sibling())
-                            && is_def(next)
-                        {
-                            prev = Some(next);
-                        }
-                        match prev {
+                    DefinitionAnchor::After(Some(parent), prev) => {
+                        let key = (addr(Some(parent)), addr(prev));
+                        match last_at.get(&key).copied().or(prev) {
                             Some(p) => p.insert_after(def_node),
                             None => parent.prepend(def_node),
                         }
+                        last_at.insert(key, def_node);
                     }
                     DefinitionAnchor::After(None, _) => {}
                 }
@@ -2562,18 +2560,28 @@ where
         }
 
         if !written.is_empty() {
-            // A byte of `content` to its line and 1-based column: line `i` of the content starts
-            // at byte column `offsets[i]` of its source line.
-            let at = |p: usize| -> LineColumn {
-                let before = &content[..p];
-                let line = before.bytes().filter(|&b| b == b'\n').count();
-                let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+            // A byte of `content` to its line and 1-based byte column: line `i` of the content
+            // starts at byte column `offsets[i]` of its source line. The bytes asked for only
+            // grow, so one forward walk over the content serves every definition.
+            let bytes = content.as_bytes();
+            let (mut walked, mut line, mut line_start) = (0, 0, 0);
+            let mut at = |p: usize| -> LineColumn {
+                for (i, &b) in bytes[walked..p].iter().enumerate() {
+                    if b == b'\n' {
+                        line += 1;
+                        line_start = walked + i + 1;
+                    }
+                }
+                walked = p;
                 let offset = lines.offsets.get(line).copied().unwrap_or(0);
                 (start_line + line, offset + p - line_start + 1).into()
             };
             let defs = written
                 .into_iter()
-                .map(|(def, start, end)| (def, (at(start), at(end - 1)).into()))
+                .map(|(def, start, end)| {
+                    let start = at(start);
+                    (def, (start, at(end - 1)).into())
+                })
                 .collect();
             // Before the paragraph while it keeps content; else where it is now, since an empty
             // paragraph is detached.
@@ -3347,13 +3355,13 @@ where
         };
 
         let mut text_end = scanner.pos;
-        let mut title = title;
         scanner.skip_spaces(content);
         if !scanner.skip_line_end(content) {
             if !title.is_empty() {
+                // The definition ends before the title; the title it parsed is kept, as upstream
+                // does (commonmark.js drops it).
                 scanner.pos = beforetitle;
                 text_end = beforetitle;
-                title = "";
                 scanner.skip_spaces(content);
                 if !scanner.skip_line_end(content) {
                     return None;
