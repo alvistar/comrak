@@ -8,8 +8,8 @@ use crate::nodes::{
     Ast, BlockLines, LineColumn, Node, NodeTable, NodeTableRow, NodeValue, Sourcepos,
     TableAlignment,
 };
-use crate::parser::Parser;
 use crate::parser::inlines::make_inline;
+use crate::parser::{Cancellation, Parser};
 use crate::scanners;
 use crate::strings::{count_newlines, is_line_end_char, is_space_or_tab, newlines_of, trim_cow};
 
@@ -437,7 +437,8 @@ pub(crate) struct EscapedPipes<'a> {
 }
 
 impl<'a> EscapedPipes<'a> {
-    pub(crate) fn restore(self, arena: &'a Arena<'a>) {
+    /// Stops once `cancellation` asks: each split allocates a node (the caller checks after).
+    pub(crate) fn restore(self, arena: &'a Arena<'a>, cancellation: &Cancellation<'_>) {
         let restore_block_start = |position: LineColumn| {
             let preceding = self
                 .positions
@@ -471,6 +472,9 @@ impl<'a> EscapedPipes<'a> {
                         && start.column < escaped.column
                         && escaped.column <= last.column
                 }) {
+                    if cancellation.step() {
+                        return;
+                    }
                     let tail = text.to_mut().split_off(escaped.column - start.column);
                     node.insert_after(make_inline(
                         arena,

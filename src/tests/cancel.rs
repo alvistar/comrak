@@ -123,3 +123,28 @@ fn output_unchanged_when_never_stopped() {
     format_xml(actual, &options, &mut actual_xml).unwrap();
     assert_eq!(actual_xml, expected_xml);
 }
+
+/// The finalization loops that allocate a node per item stop too: escaped pipes split in a
+/// table's cells, and the link definitions `parse.leave_link_references` keeps.
+#[test]
+fn stops_finalization_allocations() {
+    let mut options = Options::default();
+    options.extension.table = true;
+    options.parse.leave_link_references = true;
+    let pipes = format!(
+        "|a|\n|-|\n{}",
+        format!("|{}|\n", "\\|".repeat(500)).repeat(40)
+    );
+    let definitions = "[a]: b\n".repeat(20_000);
+    for input in [pipes, definitions] {
+        let arena = Arena::new();
+        let (unbounded, _) = parse_stopping_on_call(&arena, &input, &options, usize::MAX);
+        unbounded.unwrap();
+        let total = arena.len();
+        let arena = Arena::new();
+        let result = try_parse_document(&arena, &input, &options, &|| arena.len() > 1_000);
+        assert_eq!(result.unwrap_err(), ParseCancelled);
+        assert!(total > 10_000, "made {total} nodes unbounded");
+        assert!(arena.len() < 2_000, "made {} nodes", arena.len());
+    }
+}

@@ -2455,7 +2455,7 @@ where
 
     fn finalize_document(&mut self) -> Result<(), ParseCancelled> {
         self.finalize_blocks()?;
-        self.insert_link_definitions();
+        self.insert_link_definitions()?;
 
         self.process_inlines();
         self.cancellation.check()?;
@@ -2471,20 +2471,24 @@ where
         }
 
         for escaped_pipes in mem::take(&mut self.escaped_pipes) {
-            escaped_pipes.restore(self.arena);
+            escaped_pipes.restore(self.arena, &self.cancellation);
+            self.cancellation.check()?;
         }
 
         Ok(())
     }
 
     /// Puts the definitions `parse.leave_link_references` kept where they were written.
-    fn insert_link_definitions(&mut self) {
+    fn insert_link_definitions(&mut self) -> Result<(), ParseCancelled> {
         // The last definition placed after each (parent, sibling) anchor: the next one at that
         // anchor goes after it, in document order.
         let mut last_at: HashMap<(usize, usize), Node<'a>> = HashMap::new();
         let addr = |n: Option<Node<'a>>| n.map_or(0, |n| std::ptr::from_ref(n) as usize);
         for (anchor, defs) in mem::take(&mut self.pending_link_definitions) {
             for (def, sourcepos) in defs {
+                if self.cancellation.step() {
+                    return Err(ParseCancelled);
+                }
                 let mut ast =
                     Ast::new_with_sourcepos(NodeValue::LinkDefinition(Box::new(def)), sourcepos);
                 ast.open = false;
@@ -2503,6 +2507,7 @@ where
                 }
             }
         }
+        Ok(())
     }
 
     fn finalize_blocks(&mut self) -> Result<(), ParseCancelled> {
